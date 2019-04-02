@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "lib/string.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -88,6 +89,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while(1);
   return -1;
 }
 
@@ -195,7 +197,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp);
+static bool setup_stack (void **esp, const char ** argv, int argc);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -220,15 +222,31 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+  int argc = 0;
+  char * arg;
+  int  mult = 1;
+  char ** argv = malloc(sizeof(char *) * 5);
+
+  while(arg = strtok_r(file_name, " ", &file_name))
+  {
+    argv[argc] = arg;
+    if(argc > (5 * mult) -1)
+    {
+      argv = realloc(argv,sizeof(char *) * 5 * ( mult + 1));
+      mult++;
+    }
+    //*esp = (void *) ((char *) * esp - strlen(arg));
+    //**esp = arg;
+    argc++;
+  }
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (argv[0]);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -302,7 +320,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack (esp, argv, argc))
     goto done;
 
   /* Start address. */
@@ -427,7 +445,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack (void **esp,  const char ** argv, int argc) 
 {
   uint8_t *kpage;
   bool success = false;
@@ -441,6 +459,58 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+
+      int i = argc-1;
+      uint32_t last_arg;
+      uintptr_t og;
+      uint32_t first_arg;
+      int hex =0;
+      og = *esp;
+      while(i >= 0)
+      {
+        *esp = (void *) (*esp - strlen(argv[i])-1);
+        hex += strlen(argv[i]) * sizeof(char) +1;
+        //memcpy((char *) *esp, argv[i], sizeof(char) * strlen(argv[i]));
+        memcpy(*esp, argv[i], strlen(argv[i])+1);
+        if(i == argc-1)
+          last_arg = *esp;
+        if(i == 0)
+          first_arg = *esp;
+        i--;
+      }
+      hex_dump((uintptr_t) *esp, *esp,hex,1); 
+      uintptr_t align = (uint32_t) *esp;
+      if(align % 4 != 0)
+        *esp -= align % 4;
+      hex += align % 4;
+      //*esp = (void *) align;
+      i = argc-1;
+      *esp = (void *) ( *esp - sizeof(char *));
+      hex += sizeof(char *);
+      memset(*esp, 0, 4);
+      while(i >= 0)
+      {
+        *esp = (void *) (*esp - sizeof(char *));
+        hex += sizeof(char *);
+        *((char **) *esp) = (char *) (last_arg);
+        if(i != 0)
+        last_arg = (void *) (last_arg - strlen(argv[i-1])-1);
+        first_arg = *esp;
+        i--;
+      }
+      *esp = (void *) (*esp - sizeof(char **));
+      hex += sizeof(char **);
+      *((char ***) *esp)= (void *) ((char **) first_arg);
+
+      *esp = (void *) (*esp - sizeof(int));
+      hex += sizeof(int);
+      *((int *) *esp) = argc;
+
+      *esp = (void *) (*esp - sizeof(void *));
+      hex += sizeof(void *);
+      *((void **) *esp) = NULL;
+
+      hex_dump((uintptr_t) *esp, *esp,hex,1); 
   return success;
 }
 
