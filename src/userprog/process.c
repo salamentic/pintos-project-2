@@ -452,65 +452,77 @@ setup_stack (void **esp,  const char ** argv, int argc)
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
+  {
+    success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+    if (success)
+     *esp = PHYS_BASE;
+    else
+      palloc_free_page (kpage);
+  }
 
-      int i = argc-1;
-      uint32_t last_arg;
-      uintptr_t og;
-      uint32_t first_arg;
-      int hex =0;
-      og = *esp;
-      while(i >= 0)
-      {
-        *esp = (void *) (*esp - strlen(argv[i])-1);
-        hex += strlen(argv[i]) * sizeof(char) +1;
-        //memcpy((char *) *esp, argv[i], sizeof(char) * strlen(argv[i]));
-        memcpy(*esp, argv[i], strlen(argv[i])+1);
-        if(i == argc-1)
-          last_arg = *esp;
-        if(i == 0)
-          first_arg = *esp;
-        i--;
-      }
-      hex_dump((uintptr_t) *esp, *esp,hex,1); 
-      uintptr_t align = (uint32_t) *esp;
-      if(align % 4 != 0)
-        *esp -= align % 4;
-      hex += align % 4;
-      //*esp = (void *) align;
-      i = argc-1;
-      *esp = (void *) ( *esp - sizeof(char *));
-      hex += sizeof(char *);
-      memset(*esp, 0, 4);
-      while(i >= 0)
-      {
-        *esp = (void *) (*esp - sizeof(char *));
-        hex += sizeof(char *);
-        *((char **) *esp) = (char *) (last_arg);
-        if(i != 0)
-        last_arg = (void *) (last_arg - strlen(argv[i-1])-1);
-        first_arg = *esp;
-        i--;
-      }
-      *esp = (void *) (*esp - sizeof(char **));
-      hex += sizeof(char **);
-      *((char ***) *esp)= (void *) ((char **) first_arg);
+  int i = argc-1;
+  uint32_t last_arg;
+  uint32_t first_arg;
+  int hex =0;
 
-      *esp = (void *) (*esp - sizeof(int));
-      hex += sizeof(int);
-      *((int *) *esp) = argc;
+  //Pushes each argument's text onto the stack
+  while(i >= 0)
+  {
+    *esp = (void *) (*esp - strlen(argv[i])-1);
+    hex += strlen(argv[i]) * sizeof(char) +1;
+    memcpy(*esp, argv[i], strlen(argv[i])+1);  //try changing to strlcpy
+    if(i == argc-1)
+      last_arg = *esp;
+    if(i == 0)
+      first_arg = *esp;
+    i--;
+  }
 
-      *esp = (void *) (*esp - sizeof(void *));
-      hex += sizeof(void *);
-      *((void **) *esp) = NULL;
+  hex_dump((uintptr_t) *esp, *esp,hex,1); 
 
-      hex_dump((uintptr_t) *esp, *esp,hex,1); 
+  //Word align
+  uintptr_t align = (uint32_t) *esp;
+  if(align % 4 != 0)
+    *esp -= align % 4;
+  hex += align % 4;
+
+  //Pushes the last arguments placeholder required by c standard
+  *esp = (void *) ( *esp - sizeof(char *));
+  hex += sizeof(char *);
+  memset(*esp, 0, 4);
+
+  //Pushes the adresses of all the argument text
+  i = argc-1;
+  while(i >= 0)
+  {
+    *esp = (void *) (*esp - sizeof(char *));
+    hex += sizeof(char *);
+    *((char **) *esp) = (char *) (last_arg);
+
+    if(i != 0)
+      last_arg = (void *) (last_arg - strlen(argv[i-1])-1);
+
+    first_arg = *esp;
+    i--;
+  }
+
+  //argv pointer pushed
+  *esp = (void *) (*esp - sizeof(char **));
+  hex += sizeof(char **);
+  *((char ***) *esp)= (void *) ((char **) first_arg);
+
+  //Argc pushed
+  *esp = (void *) (*esp - sizeof(int));
+  hex += sizeof(int);
+  *((int *) *esp) = argc;
+
+  //Final NULL for fake return
+  *esp = (void *) (*esp - sizeof(void *));
+  hex += sizeof(void *);
+  *((void **) *esp) = NULL;
+
+  //Hexdump final
+  hex_dump((uintptr_t) *esp, *esp,hex,1); 
   return success;
 }
 
