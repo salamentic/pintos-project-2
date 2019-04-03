@@ -123,8 +123,24 @@ We also check for safe memory access for every pointer being passed as an argume
 >> for a system call that only copies 2 bytes of data?  Is there room
 >> for improvement in these numbers, and how much?
 
+When this is the case, as per the way the file operations have been implemented, the number of inspections will be at least 1.
+The max will be 2, as we will need to create a new page.
+In most cases, the system call copying 2 bytes of data will be 1, the max will be 2 when the page is only one byte from being full, since another get will have to be done so that a new page can be gotten.
+There is not room for improvement, we believe. Most of the commands are being run from PintOS themself, and these are quite efficient.
+Using a dynamic addressing system they theoretically could be improved, but we are not required to implement this.
+
 >> B5: Briefly describe your implementation of the "wait" system call
 >> and how it interacts with process termination.
+
+When wait is called on a process, we add the process to a list in the child being waited for, which indicates the list of processes that are waiting for that child process.
+We then sema_down on a semaphore that is accessible by only the process and the children of it, which is initalized to 0.
+This semaphore will be upped when the child process completes execution or fails/terminates.
+This semaphore will have to be stored in the structre outside of these two threads so that it will be present even when either the parent or the child dies.'
+An additional step for all this must be checking if the process being waited for is indeed a child, if it isn't we fail the wait.
+This also occurs if we are already waiting for a child.
+When the child process terminates, it must check if any process is waiting for it, and if there is, we up the global semaphore, and then terminate.
+In case of the parent terminating, nothing changes, but since the semaphore is outside of the child and parent thread, there will be no issues when the child ups the semaphore for the parent.
+
 
 >> B6: Any access to user program memory at a user-specified address
 >> can fail due to a bad pointer value.  Such accesses must cause the
