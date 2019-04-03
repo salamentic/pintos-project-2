@@ -8,9 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Aniruddh Rao <anrao3@buffalo.edu>
+Aaron Wilson <wilsonaar@buffalo.edu>
 
 ---- PRELIMINARIES ----
 
@@ -30,19 +29,41 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+char**argv - To store the arguments temporarily and ordered before placing them on the stack. One page of memory is allocated.
+int argc - The number of arguments in argv
+static void setup_stack() - Made it so that we push the arguments using the stack pointer provided. The stack is setup as specified in the project description
+(!) process_execute() - Made it so that we process the filename to execute the program in the first argument.
+load() - Big Function. This gets a copy of the filename, and tokenizes it , using strtok_r . This is stored in argv. 
+char*fn_copy2 - The variable used to store the copy of a filename. Used to tokenize the string to get the first argument for process_execute().
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
 >> you arrange for the elements of argv[] to be in the right order?
 >> How do you avoid overflowing the stack page?
 
+Firstly we tokenize the string and store the arguments in an array. This helps maintain order when we are pushing the arguments onto the stack later.
+Then, in setup_stack(), we first start at the stack pointer passed into the function. Further, we modify this function's prototype so that it can take in char**argv and int argc.
+After we give the stack the memory required ( a page ), we start pushing arguments.
+We copy the strings in argv onto the stack, while allocating as much space required on the stack. We then push as many 0-valued bits are required for word alignment.
+Then we push a null char pointer to satisfy C standards for arguments. Then we push the pointers to the arguments already on the stack in reverse order. We do so by storing the pointer to the last argument before the word alignment step.
+Then we push the pointer to the first argument pointer. Then we push the number of total arguments ( argc ) onto the stack.
+Finally, we push null onto the stack as a fake return address.
+Ideally, an overflow of the stack page should not occur, based on the standards for argument passing in PintOS, but in case it does, we allocate another page and continue pushing on the a rguments.
+
 ---- RATIONALE ----
 
 >> A3: Why does Pintos implement strtok_r() but not strtok()?
 
+strtok() uses a global/static variable for storing its status, so you can't use them in multiple threads. Since this is a possibility in PintOS, strtok() is not implemented.
+strtok_r(), on the other hand, allows you to provide a pointer where you can store the status of the tokenizing process. This allows PintOS to safely tokenize the string while still having multiple threads.
+
 >> A4: In Pintos, the kernel separates commands into a executable name
 >> and arguments.  In Unix-like systems, the shell does this
 >> separation.  Identify at least two advantages of the Unix approach.
+
+- The Unix approach reduces the workload on the kernel Therefore, it also reduces the exchange of data between the kernel space and user space.
+- The Unix approach reduces the chances of invalid arguments being passed to the kernel, since the shell can verify them before passing them on to the kernel. 
 
 			     SYSTEM CALLS
 			     ============
@@ -53,9 +74,28 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+void process_wait() - We modify this function so that we can implement the process to wait for a child process using synchronization.
+void* safe_acc(void*address) - Checks for safe access of memory. Checks if the pointer being accessed by the system call is null, or is poining to ummapped user memory, or is not in te user address space.
+                               If any of these cases are fullfill, the process is terminated.
+void syscall_handler(struct intr_frame f) - This is what checks the stack for the syscall nnumber, and executed the rrequired syscalls. We might change the execution of the different syscalls to different functions, but for now everything happens in this handler.
+void process_exit() - We modified this so that it prints an exit message as required by P2 standards.
+
+struct semaphore filesys - This semaphore is initialized to 1, and is used so that only one process can modify the file system at a time. 
+struct list files - This list is present for every executing thread, and holds a file descriptor structure for every file open by this process/thread.
+struct file_descriptor - This struct holds a pointer to a file, and an int which signifies the file descriptor.
+struct list children - This list is used to hold children of the current process.
+
+int max_fd - This is the max number of file descriptors currently used by the thread. This allows for unique file descriptors for different files open.
+int exit_status - This holds the exit status for the current process. 
+
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
 >> single process?
+
+File descriptors are numbers that are associated to an open file that is unique to the process.
+These allow the process to modify, open, or read from its own copy of the file.
+Each file descriptor is unique to the process, and whenever you open a file, the process has its own position in the file for every file it opens with a desciptor.
+These descriptors are not inherited by the children of the process.
 
 ---- ALGORITHMS ----
 
