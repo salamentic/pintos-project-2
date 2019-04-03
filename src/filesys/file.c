@@ -1,9 +1,15 @@
 #include "filesys/file.h"
 #include <debug.h>
 #include "filesys/inode.h"
-#include "threads/malloc.h"
+#include "filesys/inode.h"
+#include <list.h>
 
 /* An open file. */
+
+/* Opens a file for the given INODE, of which it takes ownership,
+   and returns the new file.  Returns a null pointer if an
+   allocation fails or if INODE is null. */
+
 struct file 
   {
     struct inode *inode;        /* File's inode. */
@@ -13,9 +19,6 @@ struct file
     struct list_elem threadelem;
   };
 
-/* Opens a file for the given INODE, of which it takes ownership,
-   and returns the new file.  Returns a null pointer if an
-   allocation fails or if INODE is null. */
 struct file *
 file_open (struct inode *inode) 
 {
