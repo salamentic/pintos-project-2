@@ -102,6 +102,20 @@ These descriptors are not inherited by the children of the process.
 >> B3: Describe your code for reading and writing user data from the
 >> kernel.
 
+First we get the arguments from the systmem call stack. 
+- The buffer to write from or read to
+- The size to be written
+- The file description
+Then we check the fd number. If 1, we write to the console ( std_out ) using putbuf. The arguments will be arg[2] and arg[3] which we get from the stack.
+                             If any other number, we write to the file using file_write defined in file.c, with the respective arguments.
+In case of reading.          if 0 , we take input from the keyboard ( std_in ) using inputget_c, with the respective arguments from the stack.
+                             If any other number, we read using file_read similarly.
+			     If file write gets 0 or file read gets 1, we throw an error.
+The return value depends on the file descriptor. If the operation is being done on std, we return the value in arg[3], assuming everything can be read or written.
+                                                 In any other case, we return the value from the respective file_command.
+Another thing to note, before these operations take place, we also down the global semaphore for file operations, and up after operations are done.
+We also check for safe memory access for every pointer being passed as an argument to the system call.
+
 >> B4: Suppose a system call causes a full page (4,096 bytes) of data
 >> to be copied from user space into the kernel.  What is the least
 >> and the greatest possible number of inspections of the page table
@@ -133,6 +147,11 @@ These descriptors are not inherited by the children of the process.
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
 
+Whenever exec is called, we assign a variable pid to the exec function, which should return the pid of the process being executed once loaded, and -1 if it does not load.
+Once an assignment is done, the next line will be a sema_down on a global semaphore, which is initalized to 0. This semaphore will be upped  only when the execution of the child process either fails or succeeds,
+Therefore, the parent process will have to wait for the child process to load before it can continue or return for the exec block.
+We can determine the success based on the pid returned. if the pid is -1 then the exec failed. Else, it succeeded, and we return as such.
+
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
 >> calls wait(C) before C exits?  After C exits?  How do you ensure
@@ -145,11 +164,23 @@ These descriptors are not inherited by the children of the process.
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+We implemented it in the way that we did because the approach we used checks for null pointers, and if they are in the user address, and then check if it unmapped, and only then dereferences the pointer.
+This saves time over page faulting whenever a process is accessing non-user memory. It reduces the Inter-process communication with the other process being the page fault interrupt handler.
+Further, this approach is much simpler than the approach where you need to use assembly for handling page faults. 
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+The advantadges of our design is that it is pretty straightforward, each process easily aquires a unique file descriptor.
+Another advantadge would be the fact that we use a list to store file descriptors, so we can store a lot more to be stored than allocating a fixed amount of memory, since lists are memory safe, and can increase the amount of memory as required in PintOS.
+Pushing is quite quick, also.
+The disadvantadges are that although adding file descriptors is pretty fast, removal can be slightly slower, because you need to look through a list in O(N) time.
+Further, it also might be slightly slower in a case where retrievals of the file descriptor are required. This is relevant only when too many files are opened by a specific process.
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We did not change it, since each process exeuted has an independent PID. We might change it so children processes are mapped to the same pid having a one to many mapping.
 
 			   SURVEY QUESTIONS
 			   ================
