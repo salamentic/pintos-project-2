@@ -30,6 +30,8 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *fn_copy2;
+  char * arg;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,10 +41,21 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  fn_copy2 = palloc_get_page (0);
+  if (fn_copy2 == NULL)
+    return TID_ERROR;
+
+  strlcpy (fn_copy2, file_name, PGSIZE);
+
+  arg = strtok_r(file_name, " ", &file_name);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (arg, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
+  {
     palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy2); 
+  }
   return tid;
 }
 
@@ -222,6 +235,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
+
   int argc = 0;
   char * arg;
   int  mult = 1;
@@ -235,8 +249,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       argv = realloc(argv,sizeof(char *) * 5 * ( mult + 1));
       mult++;
     }
-    //*esp = (void *) ((char *) * esp - strlen(arg));
-    //**esp = arg;
     argc++;
   }
 
@@ -521,6 +533,7 @@ setup_stack (void **esp,  const char ** argv, int argc)
   hex += sizeof(void *);
   *((void **) *esp) = NULL;
 
+  free(argv);
   //Hexdump final
   hex_dump((uintptr_t) *esp, *esp,hex,1); 
   return success;
