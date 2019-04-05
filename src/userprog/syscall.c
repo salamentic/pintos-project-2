@@ -57,6 +57,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if(*((int *) f->esp) == SYS_EXIT)
   {
+    void * stack_value = safe_acc(arg1);
+    if(stack_value == NULL)
+      return; 
     thread_current()->exit = *((int *) arg1);
     thread_exit();
     f->eax = *((int *) arg1);
