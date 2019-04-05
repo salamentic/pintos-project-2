@@ -93,8 +93,10 @@ int max_fd - This is the max number of file descriptors currently used by the th
 int exit_status - This holds the exit status for the current process. 
 int wait_status - This holds the status of wait after a wait has been called. This will probably not be used later on since it is not optimal
 for dealing with race conditions syscall wait.
+struct wait_desc * parent_w - This struct is assigned to a child who is being waited on by it's parent. The semaphore is not held by any of the two threads, preventing races.
 
 struct file_descriptor - This struct holds a pointer to a file, and an int which signifies the file descriptor.
+struct wait_desc - This struct holds a tid and a struct semaphore.
 
 
 
@@ -204,7 +206,19 @@ We can determine the success based on the pid returned. if the pid is -1 then th
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+The way we deal with wait currently is by providing an auxillary argument to process_wait(), and if not that a semaphore that can be shared between the two processes. 
+Nevertheless, since this semaphore is not owned by any of the two threads, a lot of race conditions can be successfully avoided. 
+(Note: The alternative method we have in mind is a struct with tid_t for storing the parents tid and a smeaphore init to 0, which will be created in the syscall handler
+and stored in a pointer in the child thread. This  achieves the same goal without changing the function protoype)
 
+So firstly this semaphore will be initialized before the wait starts, to 0. Before we wait, then we call process wait on C and then down the semaphore as the parent. This way, we can wait for the child to execute before getting the wait status returned once the child finishes execution. 
+When the wait(C) is called before C exits, there are no issues. Process C executes and before it exits, be it due to an error or normal execution, it ups the semaphore it shares with it's parent  before doing so, allowing wait to return and the parent to continue execution.
+In case of after C exiting, since we check for tid before calling wait itself the wait will return -1 before it can even make a call to process_wait.
+
+When P terminates without waiting, no change is made since the semaphore is not held by the parent and even it is assigned to C, it won't matter since the semaphore will be up'd with no effect (since it's parent will never be able to call down again).
+The same applies for the after C exits case, due to the way we have chosen to implement wait.
+
+There are not many other special cases, other than the recursive wait where a child that is being waited on, waits for it's own child. There is no issue in this case either since the implementation allows for this.
 
 ---- RATIONALE ----
 
