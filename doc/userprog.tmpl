@@ -31,11 +31,11 @@ Aaron Wilson <wilsonaar@buffalo.edu>
 
 char**argv - To store the arguments temporarily and ordered before placing them on the stack. One page of memory is allocated.
 int argc - The number of arguments in argv
-static void setup_stack() - Made it so that we push the arguments using the stack pointer provided. The stack is setup as specified in the project description
-(!) process_execute() - Made it so that we process the filename to execute the program in the first argument.
-load() - Big Function. This gets a copy of the filename, and tokenizes it , using strtok_r . This is stored in argv. 
+static void setup_stack(void *esp, const char ** argv, int argc) - Made it so that we push the arguments using the stack pointer provided. The stack is setup as specified in the project description
+tid_t process_execute(const char * filename) - Made it so that we process the filename to execute the program in the first argument.
+bool load (const char *file_name, void (**eip) (void), void **esp)- This gets a copy of the filename, and tokenizes it , using strtok_r . This is stored in argv. 
 char*fn_copy2 - The variable used to store the copy of a filename. Used to tokenize the string to get the first argument for process_execute().
-
+int process_wait(tid_t child_tid UNUSED) - Changed it so that we waited 5 seconds for now, till wait gets implemented.
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
@@ -74,19 +74,25 @@ strtok_r(), on the other hand, allows you to provide a pointer where you can sto
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-void process_wait() - We modify this function so that we can implement the process to wait for a child process using synchronization.
+tid_t process_wait() - We modify this function so that we can implement the process to wait for a child process using synchronization.
 void* safe_acc(void*address) - Checks for safe access of memory. Checks if the pointer being accessed by the system call is null, or is poining to ummapped user memory, or is not in te user address space.
                                If any of these cases are fullfill, the process is terminated.
 void syscall_handler(struct intr_frame f) - This is what checks the stack for the syscall nnumber, and executed the rrequired syscalls. We might change the execution of the different syscalls to different functions, but for now everything happens in this handler.
 void process_exit() - We modified this so that it prints an exit message as required by P2 standards.
 
+struct thread - Added multiple members for functionality required (shown below):
 struct semaphore filesys - This semaphore is initialized to 1, and is used so that only one process can modify the file system at a time. 
 struct list files - This list is present for every executing thread, and holds a file descriptor structure for every file open by this process/thread.
-struct file_descriptor - This struct holds a pointer to a file, and an int which signifies the file descriptor.
-struct list children - This list is used to hold children of the current process.
-
+struct list children - This list is used to hold children of the given process/thread.
+struct thread * parent - This list is used to hold the address of the thread that is the parent of the current process.
 int max_fd - This is the max number of file descriptors currently used by the thread. This allows for unique file descriptors for different files open.
 int exit_status - This holds the exit status for the current process. 
+int wait_status - This holds the status of wait after a wait has been called. This will probably not be used later on since it is not optimal
+for dealing with race conditions syscall wait.
+
+struct file_descriptor - This struct holds a pointer to a file, and an int which signifies the file descriptor.
+
+
 
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
@@ -156,6 +162,25 @@ In case of the parent terminating, nothing changes, but since the semaphore is o
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+The way we handle errors, is by first checking for the conditions related to the possible errors that might occur, before dereferencing or writing to memory. 
+We do this using the wrapper function called safe_acc, which checks for the validity of a pointer passed to it, and terminates the process and returns NULL if the pointer is invalid.
+The following function checks for the following cases:
+1) NULL pointer 2) Unmapped memory 3) Non user address.
+
+That said, whenever a file operation is called, the handler first checks if all the argument addresses are valid. Then, it checks, if the argument is a pointer,
+if the pointer is valid using safe_acc again. Then finally, we verify the memory locations being worked on, if any, to see if its valid too for e.g files. After all these checks, we successfully 
+know that all the error prone arguments and memory locations are safe to use, and therefore perform the required actions. In case any of these say that the pointer/memory is invalid, the process is terminated using thread_exit() (which 
+frees all memory held by the process using process_exit()) and setting the exit status to -1, indicating that the process was terminated because of an error.
+Although this poses for multiple calls to safe_acc, we feel this strategy allows for the safest use of memory   in the simplest possible way. The other method would be to make use of page faults alone
+after some modifications, but that poses more communication overhead in my opinion.
+
+Finally, an example of this would be a call to syscall write. 
+First we check if the syscall number location on the stack is valid, and then check if the syscall number is the same as SYS_WRITE.
+Then, since it is we check the validity of the first three argument positions on the stack, since the syscall uses arguments for fd, buffer and size.
+Then the next step is to check if all the pointers are valid, in this case that being buffer. Then finally, we check if the memory of the file related to fd is user mapped, and if it is, we finally write to the file.
+Now say, the buffer was a bad pointer. Then before the write can be done, the syscall handler would check if it is invalid and terminate the process when it sees that the pointer for buffer is a bad one (safe_acc does this).
+This successfully frees all memory held by the process and allows other syscalls to be made without crashing pintos.
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
@@ -174,6 +199,7 @@ We can determine the success based on the pid returned. if the pid is -1 then th
 >> that all resources are freed in each case?  How about when P
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
+
 
 ---- RATIONALE ----
 
