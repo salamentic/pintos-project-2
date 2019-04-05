@@ -40,6 +40,7 @@ tid_t process_execute(const char * filename) - Made it so that we process the fi
 bool load (const char *file_name, void (**eip) (void), void **esp)- This gets a copy of the filename, and tokenizes it , using strtok_r . This is stored in argv. 
 char*fn_copy2 - The variable used to store the copy of a filename. Used to tokenize the string to get the first argument for process_execute().
 int process_wait(tid_t child_tid UNUSED) - Changed it so that we waited 5 seconds for now, till wait gets implemented.
+
 ---- ALGORITHMS ----
 
 >> A2: Briefly describe how you implemented argument parsing.  How do
@@ -78,9 +79,13 @@ strtok_r(), on the other hand, allows you to provide a pointer where you can sto
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
-tid_t process_wait() - We modify this function so that we can implement the process to wait for a child process using synchronization.
+int process_wait(tid child_tid UNUSED, void * aux UNUSED) - We might use this signature since it's a possible design we are considering, if it can function.
+int process_wait(tid child_tid UNUSED) - We modify this function so that we can implement the process to wait for a child process using synchronization.
 void* safe_acc(void*address) - Checks for safe access of memory. Checks if the pointer being accessed by the system call is null, or is poining to ummapped user memory, or is not in te user address space.
                                If any of these cases are fullfill, the process is terminated.
+tid_t process_execute(const char * filename) - Modified it so that it calls sema_up on a shared semaphore.
+tid_t process_execute(const char * filename, void  aux UNUSED) - We might use this for exec implementation if it functions, where the aux will be a semaphore.
+
 void syscall_handler(struct intr_frame f) - This is what checks the stack for the syscall nnumber, and executed the rrequired syscalls. We might change the execution of the different syscalls to different functions, but for now everything happens in this handler.
 void process_exit() - We modified this so that it prints an exit message as required by P2 standards.
 
@@ -197,7 +202,7 @@ This successfully frees all memory held by the process and allows other syscalls
 Whenever exec is called, we assign a variable pid to the exec function, which should return the pid of the process being executed once loaded, and -1 if it does not load.
 Once an assignment is done, the next line will be a sema_down on a global semaphore, which is initalized to 0. This semaphore will be upped  only when the execution of the child process either fails or succeeds,
 Therefore, the parent process will have to wait for the child process to load before it can continue or return for the exec block.
-We can determine the success based on the pid returned. if the pid is -1 then the exec failed. Else, it succeeded, and we return as such.
+We can determine the success based on the tid_t returned. if the tid is TID_ERROR then the exec failed. Else, it succeeded, and we return as such.
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
