@@ -84,7 +84,8 @@ int process_wait(tid child_tid UNUSED) - We modify this function so that we can 
 void* safe_acc(void*address) - Checks for safe access of memory. Checks if the pointer being accessed by the system call is null, or is poining to ummapped user memory, or is not in te user address space.
                                If any of these cases are fullfill, the process is terminated.
 tid_t process_execute(const char * filename) - Modified it so that it calls sema_up on a shared semaphore.
-tid_t process_execute(const char * filename, void  aux UNUSED) - We might use this for exec implementation if it functions, where the aux will be a semaphore.
+struct list waitsema_list - List of semaphores that have been downed by process, and contain the pid of the child.
+struct list  * getwait_list() - Gives the pointer to waitsema_list
 
 void syscall_handler(struct intr_frame f) - This is what checks the stack for the syscall nnumber, and executed the rrequired syscalls. We might change the execution of the different syscalls to different functions, but for now everything happens in this handler.
 void process_exit() - We modified this so that it prints an exit message as required by P2 standards.
@@ -200,7 +201,7 @@ This successfully frees all memory held by the process and allows other syscalls
 >> success/failure status passed back to the thread that calls "exec"?
 
 Whenever exec is called, we assign a variable pid to the exec function, which should return the pid of the process being executed once loaded, and -1 if it does not load.
-Once an assignment is done, the next line will be a sema_down on a global semaphore, which is initalized to 0. This semaphore will be upped  only when the execution of the child process either fails or succeeds,
+Once an assignment is done, the next line will be a sema_down on a shared semaphore, which is initalized to 0. This semaphore will be upped  only when the execution of the child process either fails or succeeds,
 Therefore, the parent process will have to wait for the child process to load before it can continue or return for the exec block.
 We can determine the success based on the tid_t returned. if the tid is TID_ERROR then the exec failed. Else, it succeeded, and we return as such.
 
@@ -211,10 +212,10 @@ We can determine the success based on the tid_t returned. if the tid is TID_ERRO
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
-The way we deal with wait currently is by providing an auxillary argument to process_wait(), and if not that a semaphore that can be shared between the two processes. 
+The way we deal with wait currently is by addinga semaphore to list sema_waitlist with the tid of the child process, and if not that a semaphore that can be shared between the two processes. 
 Nevertheless, since this semaphore is not owned by any of the two threads, a lot of race conditions can be successfully avoided. 
-(Note: The alternative method we have in mind is a struct with tid_t for storing the parents tid and a smeaphore init to 0, which will be created in the syscall handler
-and stored in a pointer in the child thread. This  achieves the same goal without changing the function protoype)
+To save space, whenever we wish to handle the semaphore in the syscall, we call the process function that retrieves it. When we wish to up the
+semaphore from the child we go through the list and up the semaphore corresponding to the pid of the child.
 
 So firstly this semaphore will be initialized before the wait starts, to 0. Before we wait, then we call process wait on C and then down the semaphore as the parent. This way, we can wait for the child to execute before getting the wait status returned once the child finishes execution. 
 When the wait(C) is called before C exits, there are no issues. Process C executes and before it exits, be it due to an error or normal execution, it ups the semaphore it shares with it's parent  before doing so, allowing wait to return and the parent to continue execution.
