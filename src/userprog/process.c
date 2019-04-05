@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "lib/string.h"
+#include "devices/timer.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -102,7 +103,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while(1);
+  timer_msleep(5000);
   return -1;
 }
 
@@ -129,7 +130,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  printf("%s: exit(%d)\n", thread_name(), 0);
+  printf("%s: exit(%d)\n", thread_name(), thread_current()->exit);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -240,16 +241,17 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int argc = 0;
   char * arg;
   int  mult = 1;
-  char ** argv = malloc(sizeof(char *) * 5);
+  //char ** argv = malloc(sizeof(char *) * 5);
+  char ** argv = palloc_get_page(0);
 
   while(arg = strtok_r(file_name, " ", &file_name))
   {
     argv[argc] = arg;
-    if(argc > (5 * mult) -1)
+    /*if(argc > (5 * mult) -1)
     {
       argv = realloc(argv,sizeof(char *) * 5 * ( mult + 1));
       mult++;
-    }
+    } */
     argc++;
   }
 
@@ -491,7 +493,6 @@ setup_stack (void **esp,  const char ** argv, int argc)
     i--;
   }
 
-  hex_dump((uintptr_t) *esp, *esp,hex,1); 
 
   //Word align
   uintptr_t align = (uint32_t) *esp;
@@ -534,9 +535,7 @@ setup_stack (void **esp,  const char ** argv, int argc)
   hex += sizeof(void *);
   *((void **) *esp) = NULL;
 
-  free(argv);
-  //Hexdump final
-  hex_dump((uintptr_t) *esp, *esp,hex,1); 
+  palloc_free_page(argv);
   return success;
 }
 
