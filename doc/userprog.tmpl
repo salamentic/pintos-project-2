@@ -15,6 +15,10 @@ Aaron Wilson <wilsonaar@buffalo.edu>
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
+We have not completely implemented our design for process_wait so it is definitely gonna change in the future. 
+The parts relating to argument passing and filesystems are more or less functional. 
+Also, for the syscall error handling question, the parts relating to exact functionality are left out, since the question focuses on the parts relating to the
+memory access of the syscalls.
 
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
@@ -201,6 +205,7 @@ We can determine the success based on the pid returned. if the pid is -1 then th
 >> there any special cases?
 
 
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
@@ -235,15 +240,23 @@ the quarter.
 
 >> In your opinion, was this assignment, or any one of the three problems
 >> in it, too easy or too hard?  Did it take too long or too little time?
+I think it was reasonably hard, and the time was more than enough considering that we also had spring break to look over the project.
+I do think process_wait is slightly tricky and the number of tests can be a little intimidating.
 
 >> Did you find that working on a particular part of the assignment gave
 >> you greater insight into some aspect of OS design?
+I think working on the syscalls gave me a lot insight on OS design. The stack setup part also helped me understand how the OS deals with arguments, 
+something I took for granted in programming.
 
 >> Is there some particular fact or hint we should give students in
 >> future quarters to help them solve the problems?  Conversely, did you
 >> find any of our guidance to be misleading?
+I feel that there should be more hints on how to deal with pointers for the setup_stack part, since I think that's the main hardship for argument passing. That part was less about 
+how to design an OS and more about how do void pointers work in the context of pintos.
+
 
 >> Do you have any suggestions for the TAs to more effectively assist
 >> students, either for future quarters or the remaining projects?
 
 >> Any other comments?
+Project 2 is a lot more relaxing to work on than project 1.
