@@ -11,6 +11,7 @@
 #include "userprog/pagedir.h"
 #include "filesys/filesys.h"
 #include "threads/synch.h"
+#include "userprog/process.h"
 
 static void syscall_handler (struct intr_frame *);
 struct file_desc {
@@ -124,13 +125,17 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if( *((int *) f->esp) == SYS_CREATE)
   {
-    void * stack_value = safe_acc(arg1);
-    if(stack_value == NULL)
-      return; 
+    //void * stack_value = safe_acc(arg1);
+    //if(stack_value == NULL)
+    //  return; 
 
     stack_value = safe_acc(*(char **) arg1);
     if(stack_value == NULL)
     return; 
+
+    stack_value = safe_acc(arg2);
+    if(stack_value == NULL)
+      return; 
 
     sema_down(&filesys_sema);
     bool temp = filesys_create(*(char **) arg1, * (unsigned *) arg2);
@@ -146,6 +151,10 @@ syscall_handler (struct intr_frame *f UNUSED)
   
   if(*((int *) f->esp) == SYS_FILESIZE)
   {
+      void * stack_value = safe_acc(arg1);
+      if(stack_value == NULL)
+        return; 
+
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
@@ -155,6 +164,7 @@ syscall_handler (struct intr_frame *f UNUSED)
              sema_down(&filesys_sema);
              f->eax = file_length(list_entry(index, struct file_desc, threadelem)->fileloc);
              sema_up(&filesys_sema);
+             return;
            }
       }
     return;
@@ -162,6 +172,10 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if(*((int *) f->esp) == SYS_TELL)
   {
+      void * stack_value = safe_acc(arg1);
+      if(stack_value == NULL)
+        return; 
+
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
@@ -171,6 +185,7 @@ syscall_handler (struct intr_frame *f UNUSED)
              sema_down(&filesys_sema);
              f->eax = file_tell(list_entry(index, struct file_desc, threadelem)->fileloc);
              sema_up(&filesys_sema);
+             return;
            }
       }
     return;
@@ -178,6 +193,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if(*((int *) f->esp) == SYS_SEEK)
   {
+      void * stack_value = safe_acc(arg1);
+      if(stack_value == NULL)
+        return; 
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
@@ -187,15 +205,50 @@ syscall_handler (struct intr_frame *f UNUSED)
              sema_down(&filesys_sema);
              file_seek(list_entry(index, struct file_desc, threadelem)->fileloc, *(unsigned *) arg2);
              sema_up(&filesys_sema);
+             return;
            }
       }
     return;
   }
 
-  if(*((int *) f->esp) == SYS_REMOVE)
+  if(*((int *) f->esp) == SYS_EXEC)
   {
+      void * stack_value = safe_acc(arg1);
+      if(stack_value == NULL)
+        return; 
+
+      stack_value = safe_acc(*(char **) arg1);
+      if(stack_value == NULL)
+        return; 
+    
+    sema_init(get_execsema(), 0);
+
+    tid_t temp = process_execute(*(char **) arg1);
+    sema_down(get_execsema());
+    if(temp == TID_ERROR)
+	f->eax = -1;
+    else
+    {
+        if(exec_status == -1)
+           f->eax=-1;
+        else
+	f->eax = temp;
+    }
+    return;
+  }
+
+ /* if(*((int *) f->esp) == SYS_REMOVE)
+  {
+    void * stack_value = safe_acc(arg1);
+    if(stack_value == NULL)
+      return; 
+
+    stack_value = safe_acc(arg2);
+    if(stack_value == NULL)
+      return; 
+
     sema_down(&filesys_sema);
-    bool temp = filesys_create(*(char **) arg1, * (unsigned *) arg2);
+    bool temp = filesys_remove(*(char **) arg1, * (unsigned *) arg2);
     sema_up(&filesys_sema);
     if(temp == NULL)
     {
@@ -204,7 +257,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     f->eax = true;
     return;
-  }
+  }*/
 
   if(*((int *) f->esp) == SYS_WRITE)
   {
@@ -239,7 +292,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       		return; 
              sema_down(&filesys_sema);
              f->eax = file_write(list_entry(index, struct file_desc, threadelem)->fileloc, *(char **) arg2, *(int *) arg3);
-             sema_up(&filesys_sema);
+             sema_up(&filesys_sema); 
+             return;
            }
       }
       return;
@@ -270,7 +324,15 @@ syscall_handler (struct intr_frame *f UNUSED)
       {
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
-             void * stack_value = safe_acc(arg2);
+             void * stack_value = safe_acc(arg1);
+             if(stack_value == NULL)
+       		return; 
+
+             stack_value = safe_acc(arg3);
+             if(stack_value == NULL)
+       		return; 
+
+             stack_value = safe_acc(arg2);
              if(stack_value == NULL)
        		return; 
 
@@ -281,6 +343,7 @@ syscall_handler (struct intr_frame *f UNUSED)
              sema_down(&filesys_sema);
              f->eax = file_read(list_entry(index, struct file_desc, threadelem)->fileloc,(void *) *(char **) arg2, *(int *) arg3);
              sema_up(&filesys_sema);
+             return;
            }
       }
       return;
@@ -315,6 +378,7 @@ syscall_handler (struct intr_frame *f UNUSED)
              f->eax = file_close(list_entry(index, struct file_desc, threadelem)->fileloc);
              sema_up(&filesys_sema);
              list_remove(index);
+             return;
            }
       }
       return;

@@ -16,12 +16,21 @@
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
+#include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "lib/string.h"
 #include "devices/timer.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+
+struct semaphore sema_exec;
+
+struct semaphore * get_execsema()
+{
+    struct semaphore * temp = &sema_exec;
+    return temp;
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,6 +39,7 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name) 
 {
+  sema_init(&sema_exec, 0);
   char *fn_copy;
   char *fn_copy2;
   char * arg;
@@ -48,7 +58,7 @@ process_execute (const char *file_name)
 
   strlcpy (fn_copy2, file_name, PGSIZE);
 
-  arg = strtok_r(file_name, " ", &file_name);
+  arg = strtok_r(fn_copy2, " ", &fn_copy2);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (arg, PRI_DEFAULT, start_process, fn_copy);
@@ -259,9 +269,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file = filesys_open (argv[0]);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      exec_status = -1;
+      printf ("load: %s: open failed\n", argv[0]);
+      thread_current()->exit = -1;
       goto done; 
     }
+  file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -271,7 +284,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n", argv[0]);
+      thread_current()->exit = -1;
+      exec_status = -1;
       goto done; 
     }
 
@@ -345,7 +360,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  sema_up(&sema_exec);
+ // file_close (file);
+  free(file);
   return success;
 }
 
@@ -485,7 +502,7 @@ setup_stack (void **esp,  const char ** argv, int argc)
   {
     *esp = (void *) (*esp - strlen(argv[i])-1);
     hex += strlen(argv[i]) * sizeof(char) +1;
-    memcpy(*esp, argv[i], strlen(argv[i])+1);  //try changing to strlcpy
+    strlcpy(*esp, argv[i], strlen(argv[i])+1);  //try changing to strlcpy
     if(i == argc-1)
       last_arg = *esp;
     if(i == 0)
