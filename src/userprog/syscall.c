@@ -31,13 +31,6 @@ syscall_init (void)
   sema_init(&filesys_sema, 1);
 }
 
-/*static void
-syscall_handler (struct intr_frame *f UNUSED) 
-{
-  printf ("system call!\n");
-  thread_exit ();
-}*/
-
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
@@ -128,9 +121,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if( *((int *) f->esp) == SYS_CREATE)
   {
-    //void * stack_value = safe_acc(arg1);
-    //if(stack_value == NULL)
-    //  return; 
+    void * stack_value = safe_acc(arg1);
+    if(stack_value == NULL)
+      return; 
 
     stack_value = safe_acc(*(char **) arg1);
     if(stack_value == NULL)
@@ -409,7 +402,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
              f->eax = file_close(list_entry(index, struct file_desc, threadelem)->fileloc);
+struct file_desc * aa =  list_entry(index, struct file_desc, threadelem);
              list_remove(index);
+free(aa);
              sema_up(&filesys_sema);
              return;
            }
