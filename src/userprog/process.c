@@ -24,7 +24,11 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
+struct list exitlist;
 struct semaphore sema_exec;
+int init = 0;
+
+exec = 0;
 
 struct semaphore * get_execsema()
 {
@@ -39,12 +43,10 @@ struct semaphore * get_execsema()
 tid_t
 process_execute (const char *file_name) 
 {
-  sema_init(&sema_exec, 0);
   char *fn_copy;
   char *fn_copy2;
   char * arg;
   tid_t tid;
-
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -101,6 +103,7 @@ start_process (void *file_name_)
   NOT_REACHED ();
 }
 
+
 /* Waits for thread TID to die and returns its exit status.  If
    it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If TID is invalid or if it was not a
@@ -113,8 +116,41 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  timer_msleep(5000);
-  return -1;
+  //timer_msleep(5000);
+  if(init ==0)
+   {
+    list_init(&waitlist);
+    list_init(&exitlist);
+    init = 1;
+   }
+
+    if(!list_empty(&exitlist))
+{
+    for(struct list_elem * index = list_begin(&exitlist);
+	  (index) != list_end(&exitlist);
+	  index = list_next(index))
+      {
+	 if(list_entry(index, struct waitelem, wait_elem)->pid == child_tid)
+           {
+             int temp = list_entry(index, struct waitelem, wait_elem)->ex;
+             //list_remove(index);
+             //free(temp2);
+             list_entry(index, struct waitelem, wait_elem)->ex = -1;
+             return temp ;
+           }
+      }
+}
+
+  struct waitelem temp;
+  struct semaphore waiter;
+  //static struct semaphore  *waiter = malloc(sizeof(struct semaphore));
+  temp.wait = waiter;
+  sema_init(&temp.wait,0);
+  temp.pid = child_tid;
+  temp.ex = 0;
+  list_push_back(&waitlist, &temp.wait_elem);
+  sema_down(&temp.wait);
+  return temp.ex;
 }
 
 /* Free the current process's resources. */
@@ -124,6 +160,19 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  if(init ==0)
+  {
+    list_init(&waitlist);
+    list_init(&exitlist);
+    init = 1;
+  }
+
+  struct waitelem * temp = malloc(sizeof(struct waitelem));
+  temp->pid = cur->tid;
+  temp->ex = cur->exit;
+
+  list_push_back(&exitlist, &temp->wait_elem);
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -141,6 +190,25 @@ process_exit (void)
       pagedir_destroy (pd);
     }
   printf("%s: exit(%d)\n", thread_name(), thread_current()->exit);
+
+    if(!list_empty(&waitlist))
+    {
+    for(struct list_elem * index = list_begin(&waitlist);
+	  (index) != list_end(&waitlist);
+	  index = list_next(index))
+      {
+	 if(list_entry(index, struct waitelem, wait_elem)->pid == cur->tid)
+           {
+             list_entry(index, struct waitelem, wait_elem)->ex= cur->exit;
+             sema_up(&list_entry(index, struct waitelem, wait_elem)->wait);
+	     //free(list_entry(index, struct waitelem, wait_elem)->wait);
+             list_remove(index);
+             break;
+           }
+      }
+    }
+
+  file_close(thread_current()->myfile);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -274,7 +342,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       thread_current()->exit = -1;
       goto done; 
     }
-  file_deny_write(file);
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -289,6 +356,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
       exec_status = -1;
       goto done; 
     }
+
+  exec_status = 0;
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -357,12 +426,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
+  file_deny_write(file);
 
  done:
   /* We arrive here whether the load is successful or not. */
-  sema_up(&sema_exec);
  // file_close (file);
-  free(file);
+  thread_current()->myfile = (file);
+  if(exec != 0)
+    sema_up(&sema_exec);
   return success;
 }
 

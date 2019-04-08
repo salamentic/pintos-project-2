@@ -84,19 +84,22 @@ syscall_handler (struct intr_frame *f UNUSED)
     return; 
 
 
+    sema_down(&filesys_sema);
     struct file * temp = filesys_open(*(char **) arg1);
     if(temp == NULL)
     {
       f->eax = -1;
+      sema_up(&filesys_sema);
       return;
     }
 
-    struct file_desc ins;
-    ins.fd = thread_current()->max_fd;
+    struct file_desc * ins = malloc(sizeof(struct file_desc));
+    ins->fd = thread_current()->max_fd;
     thread_current()->max_fd++;
-    ins.fileloc = temp;
-    list_push_back(&thread_current()->files, &ins.threadelem);
+    ins->fileloc = temp;
+    list_push_back(&thread_current()->files, &ins->threadelem);
     f->eax = thread_current()->max_fd - 1;
+    sema_up(&filesys_sema);
     return;
   }
 
@@ -155,18 +158,19 @@ syscall_handler (struct intr_frame *f UNUSED)
       if(stack_value == NULL)
         return; 
 
+      sema_down(&filesys_sema);
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
       {
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
-             sema_down(&filesys_sema);
              f->eax = file_length(list_entry(index, struct file_desc, threadelem)->fileloc);
              sema_up(&filesys_sema);
              return;
            }
       }
+    sema_up(&filesys_sema);
     return;
   }
 
@@ -176,18 +180,23 @@ syscall_handler (struct intr_frame *f UNUSED)
       if(stack_value == NULL)
         return; 
 
+      stack_value = safe_acc((int *) arg1);
+      if(stack_value == NULL)
+      return; 
+
+      sema_down(&filesys_sema);
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
       {
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
-             sema_down(&filesys_sema);
              f->eax = file_tell(list_entry(index, struct file_desc, threadelem)->fileloc);
              sema_up(&filesys_sema);
              return;
            }
       }
+    sema_up(&filesys_sema);
     return;
   }
 
@@ -196,18 +205,20 @@ syscall_handler (struct intr_frame *f UNUSED)
       void * stack_value = safe_acc(arg1);
       if(stack_value == NULL)
         return; 
+
+      sema_down(&filesys_sema);
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
       {
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
-             sema_down(&filesys_sema);
              file_seek(list_entry(index, struct file_desc, threadelem)->fileloc, *(unsigned *) arg2);
              sema_up(&filesys_sema);
              return;
            }
       }
+    sema_up(&filesys_sema);
     return;
   }
 
@@ -220,9 +231,13 @@ syscall_handler (struct intr_frame *f UNUSED)
       stack_value = safe_acc(*(char **) arg1);
       if(stack_value == NULL)
         return; 
-    
+
+
+    sema_down(&filesys_sema);
+    //if(exec==0)
     sema_init(get_execsema(), 0);
 
+    exec=1;
     tid_t temp = process_execute(*(char **) arg1);
     sema_down(get_execsema());
     if(temp == TID_ERROR)
@@ -234,9 +249,20 @@ syscall_handler (struct intr_frame *f UNUSED)
         else
 	f->eax = temp;
     }
+    sema_up(&filesys_sema);
     return;
   }
 
+  if(*((int *) f->esp) == SYS_WAIT)
+  {
+      void * stack_value = safe_acc(arg1);
+      if(stack_value == NULL)
+        return; 
+
+    tid_t temp = process_wait(*(int *) arg1);
+    f->eax = temp;
+    return;
+  }
  /* if(*((int *) f->esp) == SYS_REMOVE)
   {
     void * stack_value = safe_acc(arg1);
@@ -261,22 +287,25 @@ syscall_handler (struct intr_frame *f UNUSED)
 
   if(*((int *) f->esp) == SYS_WRITE)
   {
+    stack_value = safe_acc((int *) arg1);
+    if(stack_value == NULL)
+    return; 
+    void * stack_value = safe_acc(arg2);
+    if(stack_value == NULL)
+    return; 
+
+    stack_value = safe_acc(*(char **) arg2);
+    if(stack_value == NULL)
+    return; 
     if(*(int *) arg1 == 1)
     {
-      void * stack_value = safe_acc(arg2);
-      if(stack_value == NULL)
-      return; 
-
-      stack_value = safe_acc(*(char **) arg2);
-      if(stack_value == NULL)
-      return; 
-
       putbuf((*(char **) arg2), *(int *) arg3);
       f->eax = *(int *) arg3;
       return;
     }
     else
     {
+      sema_down(&filesys_sema);
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
@@ -290,18 +319,35 @@ syscall_handler (struct intr_frame *f UNUSED)
              stack_value = safe_acc(*(char **) arg2);
              if(stack_value == NULL)
       		return; 
-             sema_down(&filesys_sema);
              f->eax = file_write(list_entry(index, struct file_desc, threadelem)->fileloc, *(char **) arg2, *(int *) arg3);
              sema_up(&filesys_sema); 
              return;
            }
       }
+      f->eax = -1;
+      sema_up(&filesys_sema);
       return;
     }
   }
 
   if(*((int *) f->esp) == SYS_READ)
   {
+     stack_value = safe_acc(arg3);
+     if(stack_value == NULL)
+     return; 
+
+     stack_value = safe_acc(arg2);
+     if(stack_value == NULL)
+     return; 
+
+    stack_value = safe_acc(*(char **) arg2);
+    if(stack_value == NULL)
+      return; 
+
+    stack_value = safe_acc((int *) arg1);
+    if(stack_value == NULL)
+    return; 
+
     if(*(int *) arg1 == 0)
     {
       void * stack_value = safe_acc(arg2);
@@ -312,40 +358,31 @@ syscall_handler (struct intr_frame *f UNUSED)
       if(stack_value == NULL)
       return; 
 
+      stack_value = safe_acc((int *) arg1);
+      if(stack_value == NULL)
+      return; 
+
       input_getc((*(char **) arg2), *(int *) arg3);
       f->eax = *(int *) arg3;
       return;
     }
     else
     {
+      sema_down(&filesys_sema);
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
       {
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
-             void * stack_value = safe_acc(arg1);
-             if(stack_value == NULL)
-       		return; 
 
-             stack_value = safe_acc(arg3);
-             if(stack_value == NULL)
-       		return; 
-
-             stack_value = safe_acc(arg2);
-             if(stack_value == NULL)
-       		return; 
-
-             stack_value = safe_acc(*(char **) arg2);
-             if(stack_value == NULL)
-      		return; 
-
-             sema_down(&filesys_sema);
-             f->eax = file_read(list_entry(index, struct file_desc, threadelem)->fileloc,(void *) *(char **) arg2, *(int *) arg3);
+             f->eax = file_read(list_entry(index, struct file_desc, threadelem)->fileloc,*(char **) arg2, *(int *) arg3);
              sema_up(&filesys_sema);
              return;
            }
       }
+      f->eax = -1;
+      sema_up(&filesys_sema);
       return;
     }
   }
@@ -360,27 +397,24 @@ syscall_handler (struct intr_frame *f UNUSED)
       if(stack_value == NULL)
       return; 
 
+      stack_value = safe_acc((int *) arg1);
+      if(stack_value == NULL)
+      return; 
+
+      sema_down(&filesys_sema);
       for(struct list_elem * index = list_begin(&thread_current()->files);
 	  (index) != list_end(&thread_current()->files);
 	  index = list_next(index))
       {
 	 if(list_entry(index, struct file_desc, threadelem)->fd == *(int *) arg1)
            {
-             stack_value = safe_acc(arg2);
-             if(stack_value == NULL)
-      		return; 
-
-             stack_value = safe_acc(*(char **) arg2);
-             if(stack_value == NULL)
-      		return; 
-
-             sema_down(&filesys_sema);
              f->eax = file_close(list_entry(index, struct file_desc, threadelem)->fileloc);
-             sema_up(&filesys_sema);
              list_remove(index);
+             sema_up(&filesys_sema);
              return;
            }
       }
+      sema_up(&filesys_sema);
       return;
   }
 }
