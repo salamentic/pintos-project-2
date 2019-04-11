@@ -332,6 +332,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     } */
     argc++;
   }
+  exec_status = -1;
 
   /* Open executable file. */
   file = filesys_open (argv[0]);
@@ -356,8 +357,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       exec_status = -1;
       goto done; 
     }
-
-  exec_status = 0;
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -427,6 +426,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   success = true;
   file_deny_write(file);
+  exec_status = 0;
 
  done:
   /* We arrive here whether the load is successful or not. */

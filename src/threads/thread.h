@@ -89,10 +89,11 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list files;           /* List element for all threads list. */
+    struct list files;                  /* List element for file descriptors owned. */
+    struct list children;           	/* List element for children . */
     int max_fd;
-    int exit;                       /* Priority. */
-    struct file * myfile;                       /* Priority. */
+    int exit;                           /* exit status. */
+    struct file * myfile;               /* pointer to executable of this process. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

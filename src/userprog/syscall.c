@@ -19,6 +19,13 @@ struct file_desc {
     int fd;
     struct list_elem threadelem;
 };
+
+struct child_desc {
+    int child_pid;
+    int wait_num;
+    struct list_elem childelem;
+};
+
 static struct semaphore filesys_sema;
 
 void * 
@@ -242,15 +249,43 @@ syscall_handler (struct intr_frame *f UNUSED)
         else
 	f->eax = temp;
     }
+
+    if(f->eax != -1)
+    {
+      struct child_desc * child = malloc(sizeof(struct child_desc));
+      child->child_pid = temp;
+      child->wait_num = 0;
+      list_push_back(&thread_current()->children, &child->childelem);
+    }
+
     sema_up(&filesys_sema);
     return;
   }
 
   if(*((int *) f->esp) == SYS_WAIT)
   {
+
       void * stack_value = safe_acc(arg1);
       if(stack_value == NULL)
         return; 
+
+      int valid = 0;
+      for(struct list_elem * index = list_begin(&thread_current()->children);
+	  (index) != list_end(&thread_current()->children);
+	  index = list_next(index))
+      {
+	 if(list_entry(index, struct child_desc, childelem)->child_pid == *(int *) arg1)
+           {
+             valid = 1;
+             break;
+           }
+      }
+
+    if(valid == 0)
+    {
+      f->eax = -1;
+      return;
+    }
 
     tid_t temp = process_wait(*(int *) arg1);
     f->eax = temp;
