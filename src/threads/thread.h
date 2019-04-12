@@ -93,6 +93,7 @@ struct thread
     struct list children;           	/* List element for children . */
     int max_fd;
     int exit;                           /* exit status. */
+    int userprog;                           /* exit status. */
     struct file * myfile;               /* pointer to executable of this process. */
 
     /* Shared between thread.c and synch.c. */

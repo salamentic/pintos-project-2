@@ -14,17 +14,7 @@
 #include "userprog/process.h"
 
 static void syscall_handler (struct intr_frame *);
-struct file_desc {
-    struct file * fileloc;
-    int fd;
-    struct list_elem threadelem;
-};
 
-struct child_desc {
-    int child_pid;
-    int wait_num;
-    struct list_elem childelem;
-};
 
 static struct semaphore filesys_sema;
 
@@ -276,7 +266,15 @@ syscall_handler (struct intr_frame *f UNUSED)
       {
 	 if(list_entry(index, struct child_desc, childelem)->child_pid == *(int *) arg1)
            {
-             valid = 1;
+             if(list_entry(index, struct child_desc, childelem)->wait_num >0)
+             {
+             valid = 0;
+             }
+             else
+             {
+              valid = 1;
+              list_entry(index, struct child_desc, childelem)->wait_num++;
+             }
              break;
            }
       }

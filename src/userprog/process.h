@@ -14,7 +14,7 @@ struct waitelem
 
 int exec;
 
-tid_t process_execute (const char *file_name);
+tid_t process_execute (char *file_name);
 int process_wait (tid_t);
 void process_exit (void);
 struct semaphore * get_execsema();

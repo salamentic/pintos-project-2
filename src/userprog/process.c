@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -41,9 +42,9 @@ struct semaphore * get_execsema()
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
-process_execute (const char *file_name) 
+process_execute (char *file_name) 
 {
-  char *fn_copy;
+char *fn_copy;
   char *fn_copy2;
   char * arg;
   tid_t tid;
@@ -54,20 +55,26 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  fn_copy2 = palloc_get_page (0);
-  if (fn_copy2 == NULL)
-    return TID_ERROR;
 
-  strlcpy (fn_copy2, file_name, PGSIZE);
+  fn_copy2 = malloc (sizeof(file_name));
+  if (fn_copy2 == NULL)
+{
+//    palloc_free_page (fn_copy); 
+    return TID_ERROR;
+}
+
+  strlcpy (fn_copy2, file_name, sizeof(file_name) * 4);
 
   arg = strtok_r(fn_copy2, " ", &fn_copy2);
+
+
+
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (arg, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
   {
     palloc_free_page (fn_copy); 
-    palloc_free_page (fn_copy2); 
   }
   return tid;
 }
@@ -91,7 +98,11 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
+{
+    exec_status = -1;
+    thread_current()->exit = -1;
     thread_exit ();
+}
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -133,9 +144,9 @@ process_wait (tid_t child_tid UNUSED)
 	 if(list_entry(index, struct waitelem, wait_elem)->pid == child_tid)
            {
              int temp = list_entry(index, struct waitelem, wait_elem)->ex;
-             //list_remove(index);
-             //free(temp2);
-             list_entry(index, struct waitelem, wait_elem)->ex = -1;
+             list_remove(index);
+             //free(list_entry(index, struct waitelem, wait_elem));
+             //list_entry(index, struct waitelem, wait_elem)->ex = -1;
              return temp ;
            }
       }
@@ -147,7 +158,7 @@ process_wait (tid_t child_tid UNUSED)
   temp.wait = waiter;
   sema_init(&temp.wait,0);
   temp.pid = child_tid;
-  temp.ex = 0;
+  temp.ex = -1;
   list_push_back(&waitlist, &temp.wait_elem);
   sema_down(&temp.wait);
   return temp.ex;
@@ -189,6 +200,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
   printf("%s: exit(%d)\n", thread_name(), thread_current()->exit);
 
     if(!list_empty(&waitlist))
@@ -207,6 +219,19 @@ process_exit (void)
            }
       }
     }
+
+  while(!list_empty(&thread_current()->children))
+      {
+         struct list_elem *t = list_pop_back(&thread_current()->children);
+         free(list_entry(t, struct child_desc, childelem));
+      }
+
+  while(!list_empty(&thread_current()->files))
+      {
+         struct list_elem *t = list_pop_back(&thread_current()->files);
+         file_close(list_entry(t, struct file_desc, threadelem)->fileloc);
+         free(list_entry(t, struct file_desc, threadelem));
+      }
 
   file_close(thread_current()->myfile);
 }
@@ -309,6 +334,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+  exec_status = -1;
+  thread_current()->userprog = 1;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -321,6 +348,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int  mult = 1;
   //char ** argv = malloc(sizeof(char *) * 5);
   char ** argv = palloc_get_page(0);
+  /*argv[0] = strtok_r(file_name, "\0", &file_name);
+  argc++;*/
 
   while(arg = strtok_r(file_name, " ", &file_name))
   {
@@ -332,15 +361,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
     } */
     argc++;
   }
-  exec_status = -1;
 
   /* Open executable file. */
   file = filesys_open (argv[0]);
   if (file == NULL) 
     {
       exec_status = -1;
-      printf ("load: %s: open failed\n", argv[0]);
       thread_current()->exit = -1;
+      printf ("load: %s: open failed\n", argv[0]);
       goto done; 
     }
   /* Read and verify executable header. */
@@ -646,3 +674,4 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+
